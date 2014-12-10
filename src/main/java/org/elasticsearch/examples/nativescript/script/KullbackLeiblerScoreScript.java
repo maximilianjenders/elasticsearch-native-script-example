@@ -30,8 +30,6 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
     String docLengthField;
     // terms that are used for scoring
     Map<String, Double> queryModel;
-    // lambda parameter
-    float lambda;
 
     final static public String SCRIPT_NAME = "kullback_leibler_script_score";
 
@@ -73,8 +71,6 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
         field = (String) params.get("field");
         // get the field holding the document length
         docLengthField = (String) params.get("word_count_field");
-        // get lambda
-        lambda = ((Double) params.get("lambda")).floatValue();
         if (field == null || queryModel == null || docLengthField == null) {
             throw new ScriptException("cannot initialize " + SCRIPT_NAME + ": field, query_model or length field parameter missing!");
         }
@@ -119,6 +115,8 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
 
 
                     score += KL;
+
+//                    System.out.println("term: " + term + ", tf: " + tf + ", P_t_Mq: " + P_t_Mq + ", P_t_Md: "+ P_t_Md + ", KL: " + KL);
 
                 }
             } else {
