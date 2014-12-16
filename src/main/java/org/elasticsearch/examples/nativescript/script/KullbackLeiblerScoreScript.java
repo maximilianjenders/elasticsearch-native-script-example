@@ -30,6 +30,10 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
     String docLengthField;
     // terms that are used for scoring
     Map<String, Double> queryModel;
+    // upper limit for field length, not mandatory
+    int maxFieldLength = -1;
+    // verbose switch, default false, not mandatory
+    boolean verbose = false;
 
     final static public String SCRIPT_NAME = "kullback_leibler_script_score";
 
@@ -74,6 +78,13 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
         if (field == null || queryModel == null || docLengthField == null) {
             throw new ScriptException("cannot initialize " + SCRIPT_NAME + ": field, query_model or length field parameter missing!");
         }
+
+        if (params.containsKey("max_field_length")) {
+            maxFieldLength = (int) params.get("max_field_length");
+        }
+        if (params.containsKey("verbose")) {
+            verbose = (boolean) params.get("verbose");
+        }
     }
 
     @Override
@@ -83,6 +94,15 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
             // first, get the ShardTerms object for the field.
             IndexField indexField = indexLookup().get(field);
             long T = indexField.sumttf();
+
+            if (this.maxFieldLength > 0) {
+                int fieldLength = ((String) source().get(field)).length();
+                if (fieldLength > this.maxFieldLength) {
+                    if (verbose)
+                        System.out.println("too long");
+                    return -100.0;
+                }
+            }
 
             /*
              * document length cannot be obtained by the shardTerms, we use the
@@ -100,6 +120,7 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                     // all
                     // the term statistics
                     IndexFieldTerm indexFieldTerm = indexField.get(term);
+
                     int tf = indexFieldTerm.tf();
                     /*
                      * compute Kullback Leibler Divergence , see Manning et al.,
@@ -113,14 +134,17 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                     double P_t_Md = tf / (double)L_d;
                     double KL = P_t_Mq * Math.log(P_t_Mq / P_t_Md);
 
-
                     score += KL;
 
-//                    System.out.println("term: " + term + ", tf: " + tf + ", P_t_Mq: " + P_t_Mq + ", P_t_Md: "+ P_t_Md + ", KL: " + KL);
+                    if (verbose)
+                        System.out.println("term: " + term + ", tf: " + tf + ", P_t_Mq: " + P_t_Mq + ", P_t_Md: "+ P_t_Md + ", KL: " + KL);
 
                 }
             } else {
                 throw new ScriptException("Could not compute language model score, word count field missing.");
+            }
+            if (verbose) {
+                System.out.println(score);
             }
             return score;
 
