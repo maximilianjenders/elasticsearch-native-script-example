@@ -110,6 +110,7 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
              * http://www.elasticsearch.org/guide
              * /en/elasticsearch/reference/current/mapping-core-types.html)
              */
+            boolean atLeastOne = false;
             ScriptDocValues docValues = (ScriptDocValues) doc().get(docLengthField);
             if (docValues == null || !docValues.isEmpty()) {
                 long L_d = ((ScriptDocValues.Longs) docValues).getValue();
@@ -130,6 +131,7 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                     if (tf == 0) {
                         continue;
                     }
+                    atLeastOne = true;
                     double P_t_Mq = entry.getValue();
                     double P_t_Md = tf / (double)L_d;
                     double KL = P_t_Mq * Math.log(P_t_Mq / P_t_Md);
@@ -146,6 +148,8 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
             if (verbose) {
                 System.out.println(score);
             }
+            if (!atLeastOne)
+                score = -100.0;
             return score;
 
         } catch (IOException ex) {
