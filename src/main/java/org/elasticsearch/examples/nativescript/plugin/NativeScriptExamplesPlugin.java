@@ -44,5 +44,6 @@ public class NativeScriptExamplesPlugin extends AbstractPlugin {
         module.registerScript(PhraseScoreScript.SCRIPT_NAME, PhraseScoreScript.Factory.class);
         module.registerScript(LanguageModelScoreScript.SCRIPT_NAME, LanguageModelScoreScript.Factory.class);
         module.registerScript(KullbackLeiblerScoreScript.SCRIPT_NAME, KullbackLeiblerScoreScript.Factory.class);
+        module.registerScript(TempSumBM25ScoreScript.SCRIPT_NAME, TempSumBM25ScoreScript.Factory.class);
     }
 }

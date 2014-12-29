@@ -24,14 +24,14 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
 
     // the field containing the terms that should be scored, must be initialized
     // in constructor from parameters.
-    String field;
+    String field = null;
     // name of the field that holds the word count of a field, see
     // http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/mapping-core-types.html)
-    String docLengthField;
+    String docLengthField = null;
     // terms that are used for scoring
-    Map<String, Double> queryModel;
+    Map<String, Double> queryModel = null;
     // upper limit for field length, not mandatory
-    int maxFieldLength = -1;
+    int maxFieldLength = 0;
     // verbose switch, default false, not mandatory
     boolean verbose = false;
 
