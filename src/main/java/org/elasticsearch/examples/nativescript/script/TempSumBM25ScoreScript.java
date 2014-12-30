@@ -110,9 +110,9 @@ public class TempSumBM25ScoreScript extends AbstractSearchScript {
         if (params.containsKey("verbose")) verbose = (boolean) params.get("verbose");
 
         // by default redis needs to run on localhost
-        if (verbose) System.out.println("Connecting to redis at locahost ...");
+        if (verbose) System.out.println("Connecting to redis at localhost ...");
         jedis = new Jedis("localhost");
-        if (verbose) System.out.println("Connecting to redis at locahost ... done.");
+        if (verbose) System.out.println("Connecting to redis at localhost ... done.");
     }
 
     @Override
