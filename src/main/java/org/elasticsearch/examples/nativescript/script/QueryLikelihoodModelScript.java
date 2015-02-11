@@ -13,6 +13,7 @@ import org.elasticsearch.script.NativeScriptFactory;
 import org.elasticsearch.script.ScriptException;
 import org.elasticsearch.search.lookup.IndexField;
 import org.elasticsearch.search.lookup.IndexFieldTerm;
+import redis.clients.jedis.Jedis;
 
 /**
  * Script that scores documents with a language model similarity with linear
@@ -20,7 +21,7 @@ import org.elasticsearch.search.lookup.IndexFieldTerm;
  * Equation 12.12 (link: http://nlp.stanford.edu/IR-book/) This implementation
  * only scores a list of terms on one field.
  */
-public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
+public class QueryLikelihoodModelScript extends AbstractSearchScript {
 
     // the field containing the terms that should be scored, must be initialized
     // in constructor from parameters.
@@ -34,6 +35,9 @@ public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
     float lambda;
     // verbose
     boolean verbose = false;
+
+    // redis connection
+    Jedis jedis = null;
 
     final static public String SCRIPT_NAME = "qle_model_script_score";
 
@@ -58,7 +62,7 @@ public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
          */
         @Override
         public ExecutableScript newScript(@Nullable Map<String, Object> params) {
-            return new QueryLikelihoodModelScriptScore(params);
+            return new QueryLikelihoodModelScript(params);
         }
     }
 
@@ -67,7 +71,7 @@ public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
      *            terms that a scored are placed in this parameter. Initialize
      *            them here.
      */
-    private QueryLikelihoodModelScriptScore(Map<String, Object> params) {
+    private QueryLikelihoodModelScript(Map<String, Object> params) {
         params.entrySet();
         // get the terms
         terms = (ArrayList<String>) params.get("terms");
@@ -75,12 +79,21 @@ public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
         field = (String) params.get("field");
         // get the field holding the document length
         docLengthField = (String) params.get("word_count_field");
+
+        if (field == null || terms == null || docLengthField == null || !params.containsKey("lambda")) {
+            throw new ScriptException("cannot initialize " + SCRIPT_NAME + ": field, terms, length field or lambda parameter missing!");
+        }
+
         // get lambda
         lambda = ((Double) params.get("lambda")).floatValue();
-        if (field == null || terms == null || docLengthField == null) {
-            throw new ScriptException("cannot initialize " + SCRIPT_NAME + ": field, terms or length field parameter missing!");
-        }
+
         if (params.containsKey("verbose")) verbose = (boolean) params.get("verbose");
+
+        // by default redis needs to run on localhost
+        if (verbose) System.out.println("Connecting to redis at localhost ...");
+        jedis = new Jedis("localhost");
+        if (verbose) System.out.println("Connecting to redis at localhost ... done.");
+        if (verbose) System.out.println("Parameters... field: " + field + " docLengthField: " + docLengthField + " lambda: " + lambda);
     }
 
     @Override
@@ -98,35 +111,34 @@ public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
             ScriptDocValues docValues = (ScriptDocValues) doc().get(docLengthField);
             if (docValues == null || !docValues.isEmpty()) {
                 long L_d = ((ScriptDocValues.Longs) docValues).getValue();
-                for (String term : terms) {
-                    indexField.get(term).tf();
-                }
-                long N = 0;
-                for (String term : indexField.keySet()) {
-                    N += indexField.get(term).tf() + 1;
-                }
+                for (String term : this.terms) {
+                    // Now, get the ShardTerm object that can be used to access
+                    // all
+                    // the term statistics
+                    IndexFieldTerm indexFieldTerm = indexField.get(term);
 
-                if (verbose)
-                    System.out.println("L_D=" + L_d + ", N=" + N);
-//                for (int i = 0; i < terms.size(); i++) {
-//                    // Now, get the ShardTerm object that can be used to access
-//                    // all
-//                    // the term statistics
-//                    IndexFieldTerm indexFieldTerm = indexField.get(terms.get(i));
-//
-//                    //perform laplace + 1
-//                    double denominator = (double) indexFieldTerm.tf() + 1;
-//
-//                    double M_d = (double) indexFieldTerm.tf() / (double) L_d;
-//                    /*
-//                     * compute score contribution for this term, but sum the log
-//                     * to avoid underflow, see Manning et al.,
-//                     * "Information Retrieval", Chapter 12, Equation 12.12
-//                     * (link: http://nlp.stanford.edu/IR-book/)
-//                     */
-//                    score += Math.log((1.0 - lambda) * M_c + lambda * M_d);
-//
-//                }
+                    /*
+                     * Collection probability from redis
+                     */
+                    double tf = this.getTf(term);
+                    double M_c = tf;
+                    /*
+                     * Compute M_d, see Manning et al., "Information Retrieval",
+                     * Chapter 12, Equation just before Equation 12.9 (link:
+                     * http://nlp.stanford.edu/IR-book/)
+                     */
+                    double M_d = (double) indexFieldTerm.tf() / (double) L_d;
+                    /*
+                     * compute score contribution for this term, but sum the log
+                     * to avoid underflow, see Manning et al.,
+                     * "Information Retrieval", Chapter 12, Equation 12.12
+                     * (link: http://nlp.stanford.edu/IR-book/)
+                     */
+                    score += Math.log((1.0 - lambda) * M_c + lambda * M_d);
+
+                    if (verbose) System.out.println("tf: " + tf + " L_d: " + L_d + " M_c: " + M_c + " M_d: " + M_d + " score: " + score);
+                }
+                if (verbose) System.out.println("QueryLikelihoodScore: " + score);
                 return score;
             } else {
                 throw new ScriptException("Could not compute language model score, word count field missing.");
@@ -135,6 +147,21 @@ public class QueryLikelihoodModelScriptScore extends AbstractSearchScript {
         } catch (IOException ex) {
             throw new ScriptException("Could not compute language model score: ", ex);
         }
+    }
+
+    private String buildTfKey(String term) {
+        return "tf:" + term.replace(":", "-").replace("\"", "'");
+    }
+
+    private double getTf(String term) {
+        String value = jedis.get(this.buildTfKey(term));
+
+        // if the term is new, return the maximum idf
+        if (value == null) {
+            value = this.jedis.get(this.buildTfKey("min_tf"));
+        }
+
+        return Double.parseDouble(value);
     }
 
 }
