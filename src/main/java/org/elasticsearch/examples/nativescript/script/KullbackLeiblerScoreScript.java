@@ -13,6 +13,7 @@ import org.elasticsearch.script.NativeScriptFactory;
 import org.elasticsearch.script.ScriptException;
 import org.elasticsearch.search.lookup.IndexField;
 import org.elasticsearch.search.lookup.IndexFieldTerm;
+import redis.clients.jedis.Jedis;
 
 /**
  * Script that scores documents with a language model similarity with linear
@@ -34,6 +35,11 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
     int maxFieldLength = 0;
     // verbose switch, default false, not mandatory
     boolean verbose = false;
+    // lambda parameter
+    float lambda;
+
+    // redis connection
+    Jedis jedis = null;
 
     final static public String SCRIPT_NAME = "kullback_leibler_script_score";
 
@@ -75,9 +81,13 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
         field = (String) params.get("field");
         // get the field holding the document length
         docLengthField = (String) params.get("word_count_field");
-        if (field == null || queryModel == null || docLengthField == null) {
-            throw new ScriptException("cannot initialize " + SCRIPT_NAME + ": field, query_model or length field parameter missing!");
+        if (field == null || queryModel == null || docLengthField == null || !params.containsKey("lambda")) {
+            throw new ScriptException("cannot initialize " + SCRIPT_NAME + ": field, query_model, length or lambda field parameter missing!");
         }
+
+        // get lambda
+        lambda = ((Double) params.get("lambda")).floatValue();
+
 
         if (params.containsKey("max_field_length")) {
             maxFieldLength = (int) params.get("max_field_length");
@@ -85,6 +95,10 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
         if (params.containsKey("verbose")) {
             verbose = (boolean) params.get("verbose");
         }
+        // by default redis needs to run on localhost
+        if (verbose) System.out.println("Connecting to redis at localhost ...");
+        jedis = new Jedis("localhost");
+        if (verbose) System.out.println("Connecting to redis at localhost ... done.");
     }
 
     @Override
@@ -93,14 +107,13 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
             double score = 0.0;
             // first, get the ShardTerms object for the field.
             IndexField indexField = indexLookup().get(field);
-            long T = indexField.sumttf();
 
             if (this.maxFieldLength > 0) {
                 int fieldLength = ((String) source().get(field)).length();
                 if (fieldLength > this.maxFieldLength) {
                     if (verbose)
                         System.out.println("too long");
-                    return -100.0;
+                    return -1000.0;
                 }
             }
 
@@ -128,18 +141,19 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                      * "Information Retrieval", Chapter 12, Equation 12.10
                      * (link: http://nlp.stanford.edu/IR-book/)
                      */
-                    if (tf == 0) {
-                        continue;
-                    }
-                    atLeastOne = true;
+                    if (!atLeastOne && indexFieldTerm.tf() > 0) atLeastOne = true;
+
                     double P_t_Mq = entry.getValue();
-                    double P_t_Md = tf / (double)L_d;
-                    double KL = P_t_Mq * Math.log(P_t_Mq / P_t_Md);
+                    double P_t_Md = (double) tf / (double)L_d;
+                    double P_t_Mc = this.getTf(term);
+
+
+                    double KL = P_t_Mq * Math.log((1.0 - lambda) * P_t_Mc + lambda * P_t_Md);
 
                     score += KL;
 
                     if (verbose)
-                        System.out.println("term: " + term + ", tf: " + tf + ", P_t_Mq: " + P_t_Mq + ", P_t_Md: "+ P_t_Md + ", KL: " + KL);
+                        System.out.println("term: " + term + ", tf: " + tf + ", P_t_Mq: " + P_t_Mq + ", P_t_Md: "+ P_t_Md + ", P_t_Mc: "+ P_t_Mc + ", KL: " + KL);
 
                 }
             } else {
@@ -149,7 +163,7 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                 System.out.println(score);
             }
             if (!atLeastOne)
-                score = -100.0;
+                score = -1000.0;
             return score;
 
         } catch (IOException ex) {
@@ -157,4 +171,19 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
         }
     }
 
+
+    private String buildTfKey(String term) {
+        return "tf:" + term.replace(":", "-").replace("\"", "'");
+    }
+
+    private double getTf(String term) {
+        String value = jedis.get(this.buildTfKey(term));
+
+        // if the term is new, return the maximum idf
+        if (value == null) {
+            value = this.jedis.get(this.buildTfKey("min_tf"));
+        }
+
+        return Double.parseDouble(value);
+    }
 }

@@ -35,6 +35,8 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
     float lambda;
     // verbose
     boolean verbose = false;
+    // upper limit for field length, not mandatory
+    int maxFieldLength = 0;
 
     // redis connection
     Jedis jedis = null;
@@ -87,6 +89,10 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
         // get lambda
         lambda = ((Double) params.get("lambda")).floatValue();
 
+        if (params.containsKey("max_field_length")) {
+            maxFieldLength = (int) params.get("max_field_length");
+        }
+
         if (params.containsKey("verbose")) verbose = (boolean) params.get("verbose");
 
         // by default redis needs to run on localhost
@@ -102,6 +108,17 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
             double score = 0.0;
             // first, get the ShardTerms object for the field.
             IndexField indexField = indexLookup().get(field);
+
+            boolean atLeastOne = false;
+
+            if (this.maxFieldLength > 0) {
+                int fieldLength = ((String) source().get(field)).length();
+                if (fieldLength > this.maxFieldLength) {
+                    if (verbose)
+                        System.out.println("too long");
+                    return -100.0;
+                }
+            }
             /*
              * document length cannot be obtained by the shardTerms, we use the
              * word_count field instead (link:
@@ -122,6 +139,8 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
                      */
                     double tf = this.getTf(term);
                     double M_c = tf;
+
+                    if (!atLeastOne && indexFieldTerm.tf() > 0) atLeastOne = true;
                     /*
                      * Compute M_d, see Manning et al., "Information Retrieval",
                      * Chapter 12, Equation just before Equation 12.9 (link:
@@ -138,7 +157,9 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
 
                     if (verbose) System.out.println("tf: " + tf + " L_d: " + L_d + " M_c: " + M_c + " M_d: " + M_d + " score: " + score);
                 }
+                if (!atLeastOne || score == 0.0) score = -10000.0;
                 if (verbose) System.out.println("QueryLikelihoodScore: " + score);
+
                 return score;
             } else {
                 throw new ScriptException("Could not compute language model score, word count field missing.");
