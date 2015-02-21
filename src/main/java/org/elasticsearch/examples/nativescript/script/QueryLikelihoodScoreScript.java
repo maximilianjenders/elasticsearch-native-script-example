@@ -21,7 +21,7 @@ import redis.clients.jedis.Jedis;
  * Equation 12.12 (link: http://nlp.stanford.edu/IR-book/) This implementation
  * only scores a list of terms on one field.
  */
-public class QueryLikelihoodModelScript extends AbstractSearchScript {
+public class QueryLikelihoodScoreScript extends AbstractSearchScript {
 
     // the field containing the terms that should be scored, must be initialized
     // in constructor from parameters.
@@ -64,7 +64,7 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
          */
         @Override
         public ExecutableScript newScript(@Nullable Map<String, Object> params) {
-            return new QueryLikelihoodModelScript(params);
+            return new QueryLikelihoodScoreScript(params);
         }
     }
 
@@ -73,7 +73,7 @@ public class QueryLikelihoodModelScript extends AbstractSearchScript {
      *            terms that a scored are placed in this parameter. Initialize
      *            them here.
      */
-    private QueryLikelihoodModelScript(Map<String, Object> params) {
+    private QueryLikelihoodScoreScript(Map<String, Object> params) {
         params.entrySet();
         // get the terms
         terms = (ArrayList<String>) params.get("terms");
