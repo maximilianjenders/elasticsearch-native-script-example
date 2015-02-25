@@ -1,8 +1,7 @@
 package org.elasticsearch.examples.nativescript.script;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Map;
+import java.util.*;
 
 import org.apache.lucene.search.Scorer;
 import org.elasticsearch.common.Nullable;
@@ -125,10 +124,17 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
              */
             boolean atLeastOne = false;
             ScriptDocValues docValues = (ScriptDocValues) doc().get(docLengthField);
-            if (docValues == null || !docValues.isEmpty()) {
+            ScriptDocValues termValues = (ScriptDocValues) doc().get(field);
+
+            if (docValues == null || !docValues.isEmpty() || termValues == null || termValues.isEmpty()) {
                 long L_d = ((ScriptDocValues.Longs) docValues).getValue();
-                for (Map.Entry<String, Double> entry : queryModel.entrySet()) {
-                    String term = entry.getKey();
+                List<String> documentTerms = ((ScriptDocValues.Strings) termValues).getValues();
+
+                HashSet<String> vocabularyTerms = new HashSet<>();
+                vocabularyTerms.addAll(queryModel.keySet());
+                vocabularyTerms.addAll(documentTerms);
+
+                for (String term : vocabularyTerms) {
 
                     // Now, get the ShardTerm object that can be used to access
                     // all
@@ -143,12 +149,13 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                      */
                     if (!atLeastOne && indexFieldTerm.tf() > 0) atLeastOne = true;
 
-                    double P_t_Mq = entry.getValue();
+                    double P_t_Mq = queryModel.containsKey(term) ? queryModel.get(term) : 0.0;
                     double P_t_Md = (double) tf / (double)L_d;
                     double P_t_Mc = this.getTf(term);
 
 
-                    double KL = P_t_Mq * Math.log((1.0 - lambda) * P_t_Mc + lambda * P_t_Md);
+                    double KL = ((1.0 - lambda) * P_t_Mc + lambda * P_t_Mq) * Math.log((1.0 - lambda) * P_t_Mc + lambda * P_t_Md);
+//                    double KL = P_t_Mq * Math.log((1.0 - lambda) * P_t_Mc + lambda * P_t_Md);
 
                     score += KL;
 
@@ -157,7 +164,7 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
 
                 }
             } else {
-                throw new ScriptException("Could not compute language model score, word count field missing.");
+                throw new ScriptException("Could not compute language model score, word count field missing or unable to retrieve field terms");
             }
             if (verbose) {
                 System.out.println(score);
