@@ -15,12 +15,6 @@ import org.elasticsearch.search.lookup.IndexField;
 import org.elasticsearch.search.lookup.IndexFieldTerm;
 import redis.clients.jedis.Jedis;
 
-/**
- * Script that scores documents with a language model similarity with linear
- * interpolation, see Manning et al., "Information Retrieval", Chapter 12,
- * Equation 12.12 (link: http://nlp.stanford.edu/IR-book/) This implementation
- * only scores a list of terms on one field.
- */
 public class QueryLikelihoodScoreScript extends AbstractSearchScript {
 
     // the field containing the terms that should be scored, must be initialized
@@ -141,18 +135,7 @@ public class QueryLikelihoodScoreScript extends AbstractSearchScript {
                     double M_c = tf;
 
                     if (!atLeastOne && indexFieldTerm.tf() > 0) atLeastOne = true;
-                    /*
-                     * Compute M_d, see Manning et al., "Information Retrieval",
-                     * Chapter 12, Equation just before Equation 12.9 (link:
-                     * http://nlp.stanford.edu/IR-book/)
-                     */
                     double M_d = (double) indexFieldTerm.tf() / (double) L_d;
-                    /*
-                     * compute score contribution for this term, but sum the log
-                     * to avoid underflow, see Manning et al.,
-                     * "Information Retrieval", Chapter 12, Equation 12.12
-                     * (link: http://nlp.stanford.edu/IR-book/)
-                     */
                     score += Math.log((1.0 - lambda) * M_c + lambda * M_d);
 
                     if (verbose) System.out.println("tf: " + tf + " L_d: " + L_d + " M_c: " + M_c + " M_d: " + M_d + " score: " + score);

@@ -15,12 +15,6 @@ import org.elasticsearch.search.lookup.IndexField;
 import org.elasticsearch.search.lookup.IndexFieldTerm;
 import redis.clients.jedis.Jedis;
 
-/**
- * Script that scores documents as sum_t(tf_t * (#docs+2)/(df_t+1)), which
- * equals ntn in SMART notation, see Manning et al., "Information Retrieval",
- * Chapter 6, Figure 6.15 (link: http://nlp.stanford.edu/IR-book/) This
- * implementation only scores a list of terms on one field.
- */
 public class TempSumBM25ScoreScript extends AbstractSearchScript {
 
     // defaults according to lucene
@@ -130,7 +124,7 @@ public class TempSumBM25ScoreScript extends AbstractSearchScript {
                     // Now, get the IndexFieldTerm object that can be used to access all
                     // the term statistics
                     IndexFieldTerm indexFieldTerm = indexField.get(term);
-                    // compute the most naive tfidf and add to current score
+
                     int tf = indexFieldTerm.tf();
                     float idf = this.getIdf(term);
                     if (tf != 0) {

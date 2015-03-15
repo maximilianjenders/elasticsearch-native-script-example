@@ -14,12 +14,6 @@ import org.elasticsearch.search.lookup.IndexField;
 import org.elasticsearch.search.lookup.IndexFieldTerm;
 import redis.clients.jedis.Jedis;
 
-/**
- * Script that scores documents with a language model similarity with linear
- * interpolation, see Manning et al., "Information Retrieval", Chapter 12,
- * Equation 12.12 (link: http://nlp.stanford.edu/IR-book/) This implementation
- * only scores a list of terms on one field.
- */
 public class KullbackLeiblerScoreScript extends AbstractSearchScript {
 
     // the field containing the terms that should be scored, must be initialized
@@ -142,17 +136,11 @@ public class KullbackLeiblerScoreScript extends AbstractSearchScript {
                     IndexFieldTerm indexFieldTerm = indexField.get(term);
 
                     int tf = indexFieldTerm.tf();
-                    /*
-                     * compute Kullback Leibler Divergence , see Manning et al.,
-                     * "Information Retrieval", Chapter 12, Equation 12.10
-                     * (link: http://nlp.stanford.edu/IR-book/)
-                     */
                     if (!atLeastOne && indexFieldTerm.tf() > 0) atLeastOne = true;
 
                     double P_t_Mq = queryModel.containsKey(term) ? queryModel.get(term) : 0.0;
                     double P_t_Md = (double) tf / (double)L_d;
                     double P_t_Mc = this.getTf(term);
-
 
                     double KL = ((1.0 - lambda) * P_t_Mc + lambda * P_t_Mq) * Math.log((1.0 - lambda) * P_t_Mc + lambda * P_t_Md);
 //                    double KL = P_t_Mq * Math.log((1.0 - lambda) * P_t_Mc + lambda * P_t_Md);
